@@ -242,7 +242,7 @@ export async function adminListMovies(db: Database) {
       durationMinutes: movies.durationMinutes,
       isActive: movies.isActive,
       releaseDate: movies.releaseDate,
-      upcomingShowtimes: sql<number>`(select count(*)::int from ${showtimes} s where s.movie_id = ${movies.id}
+      upcomingShowtimes: sql<number>`(select count(*)::int from ${showtimes} s where s.movie_id = "movies"."id"
         and s.status = 'SCHEDULED' and s.starts_at > now())`,
     })
     .from(movies)
@@ -256,7 +256,7 @@ export async function adminListAuditoriums(db: Database) {
       name: auditoriums.name,
       cinemaName: cinemas.name,
       timezone: cinemas.timezone,
-      seats: sql<number>`(select count(*)::int from ${seats} s where s.auditorium_id = ${auditoriums.id} and s.is_active)`,
+      seats: sql<number>`(select count(*)::int from ${seats} s where s.auditorium_id = "auditoriums"."id" and s.is_active)`,
     })
     .from(auditoriums)
     .innerJoin(cinemas, eq(cinemas.id, auditoriums.cinemaId))
@@ -275,8 +275,8 @@ export async function adminListShowtimes(db: Database, now = new Date()) {
       auditoriumName: auditoriums.name,
       cinemaName: cinemas.name,
       timezone: cinemas.timezone,
-      booked: sql<number>`(select count(*)::int from ${showtimeSeats} ss where ss.showtime_id = ${showtimes.id} and ss.status = 'BOOKED')`,
-      total: sql<number>`(select count(*)::int from ${showtimeSeats} ss where ss.showtime_id = ${showtimes.id})`,
+      booked: sql<number>`(select count(*)::int from ${showtimeSeats} ss where ss.showtime_id = "showtimes"."id" and ss.status = 'BOOKED')`,
+      total: sql<number>`(select count(*)::int from ${showtimeSeats} ss where ss.showtime_id = "showtimes"."id")`,
     })
     .from(showtimes)
     .innerJoin(movies, eq(movies.id, showtimes.movieId))

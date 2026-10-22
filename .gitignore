@@ -48,3 +48,12 @@ next-env.d.ts
 !.env.example
 .vercel
 .pgdata.log
+
+.vercel
+.env*
+
+# tool/agent artifacts
+.agents/
+.claude/
+skills-lock.json
+.env.production.local

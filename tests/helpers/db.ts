@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- tests poke at raw driver rows and errors */
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { sql, type SQL } from "drizzle-orm";

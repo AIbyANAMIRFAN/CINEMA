@@ -92,6 +92,14 @@ body {
     @apply border-accent bg-accent/15 text-accent;
   }
 
+  .seat-held {
+    background-image: repeating-linear-gradient(
+      135deg,
+      rgb(255 255 255 / 0.08) 0 3px,
+      transparent 3px 6px
+    );
+  }
+
   .skeleton {
     @apply animate-pulse rounded-xl bg-surface-2;
   }

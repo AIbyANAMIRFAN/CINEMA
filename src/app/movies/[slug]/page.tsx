@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Poster } from "@/components/poster";
 import { ShowtimePill } from "@/components/showtime-pill";
 import { EmptyState } from "@/components/ui";
 import { DATE_KEY_RE, dateKeyLabel, firstParam, formatDuration, formatLongDate, localDateKey, nextDays, tzLabel } from "@/lib/ui/format";
 import { getMovieBySlug, listCinemas, listShowtimes, type ShowtimeListItem } from "@/server/catalog";
 import { db } from "@/server/context";
-
-// Blocking render so unknown/inactive movies get a real 404 status.
-export const instant = false;
 
 const DEFAULT_TZ = "America/New_York";
 
@@ -21,6 +19,7 @@ export async function generateMetadata(props: PageProps<"/movies/[slug]">): Prom
 }
 
 export default async function MoviePage(props: PageProps<"/movies/[slug]">) {
+  await connection();
   const { slug } = await props.params;
   const sp = await props.searchParams;
   const movie = await getMovieBySlug(db, slug);

@@ -23,11 +23,14 @@ export class FakeGateway implements PaymentGateway {
     expire: [] as string[],
     refund: [] as { paymentIntentId: string; amountMinor: number; idempotencyKey: string; reason?: string }[],
   };
+  /** Simulated provider latency for createCheckoutSession (real Stripe takes 100ms+). */
+  createDelayMs = 0;
   /** Set to make createCheckoutSession throw (provider outage). */
   failCreate = false;
 
   async createCheckoutSession(input: CheckoutSessionInput): Promise<CheckoutSessionInfo> {
     this.calls.create.push(input);
+    if (this.createDelayMs) await new Promise((r) => setTimeout(r, this.createDelayMs));
     if (this.failCreate) throw new Error("provider down");
     const existing = this.sessionsByKey.get(input.idempotencyKey);
     if (existing) return this.view(existing);
@@ -79,7 +82,8 @@ export class FakeGateway implements PaymentGateway {
   }
 
   private view(id: string): CheckoutSessionInfo {
-    const { input: _i, ...info } = this.sessions.get(id)!;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { input: _input, ...info } = this.sessions.get(id)!;
     return { ...info, metadata: { ...info.metadata } };
   }
 

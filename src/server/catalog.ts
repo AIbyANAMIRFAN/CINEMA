@@ -41,7 +41,7 @@ export async function listMovies(db: DbOrTx, f: MovieFilters = {}, now = new Dat
   if (f.language) conds.push(eq(movies.language, f.language));
   if (f.genre) {
     conds.push(sql`exists (select 1 from ${movieGenres} mg join ${genres} g on g.id = mg.genre_id
-      where mg.movie_id = ${movies.id} and g.slug = ${f.genre})`);
+      where mg.movie_id = "movies"."id" and g.slug = ${f.genre})`);
   }
   // Only movies with a matching upcoming showtime when cinema/date filters are used; otherwise all active.
   if (f.cinema || f.date) {
@@ -66,7 +66,7 @@ export async function listMovies(db: DbOrTx, f: MovieFilters = {}, now = new Dat
       releaseDate: movies.releaseDate,
       posterUrl: movies.posterUrl,
       nextShowAt: sql<Date | null>`(select min(st.starts_at) from ${showtimes} st
-        where st.movie_id = ${movies.id} and st.status = 'SCHEDULED' and st.starts_at > ${now})`.mapWith(
+        where st.movie_id = "movies"."id" and st.status = 'SCHEDULED' and st.starts_at > ${now})`.mapWith(
         (v) => (v ? new Date(v) : null),
       ),
     })
@@ -135,9 +135,9 @@ export async function listShowtimes(
       cinemaSlug: cinemas.slug,
       cinemaCity: cinemas.city,
       timezone: cinemas.timezone,
-      seatsAvailable: sql<number>`(select count(*)::int from ${showtimeSeats} ss where ss.showtime_id = ${showtimes.id}
+      seatsAvailable: sql<number>`(select count(*)::int from ${showtimeSeats} ss where ss.showtime_id = "showtimes"."id"
         and (ss.status = 'AVAILABLE' or (ss.status = 'HELD' and ss.hold_expires_at <= ${now})))`,
-      seatsTotal: sql<number>`(select count(*)::int from ${showtimeSeats} ss where ss.showtime_id = ${showtimes.id}
+      seatsTotal: sql<number>`(select count(*)::int from ${showtimeSeats} ss where ss.showtime_id = "showtimes"."id"
         and ss.status <> 'BLOCKED')`,
     })
     .from(showtimes)
@@ -157,7 +157,7 @@ export async function listCinemas(db: DbOrTx) {
       city: cinemas.city,
       address: cinemas.address,
       timezone: cinemas.timezone,
-      screens: sql<number>`(select count(*)::int from ${auditoriums} a where a.cinema_id = ${cinemas.id})`,
+      screens: sql<number>`(select count(*)::int from ${auditoriums} a where a.cinema_id = "cinemas"."id")`,
     })
     .from(cinemas)
     .orderBy(asc(cinemas.name));

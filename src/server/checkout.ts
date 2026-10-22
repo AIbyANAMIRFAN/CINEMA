@@ -40,52 +40,78 @@ export async function startCheckout(
     .where(eq(bookings.id, input.bookingId));
   if (!row || row.booking.userId !== input.userId) throw new AppError("NOT_FOUND", "Booking not found.");
   const { booking } = row;
-  if (booking.status !== "PENDING") {
-    throw new AppError("CONFLICT", `This booking is ${booking.status.toLowerCase()} and cannot be paid.`);
+
+  // Decide reuse vs. new attempt while holding the booking row lock, so concurrent requests
+  // (double clicks, retries) are serialized and can never open two provider sessions.
+  type Attempt =
+    | { kind: "reuse"; url: string; paymentId: string }
+    | { kind: "busy" }
+    | { kind: "expired" }
+    | { kind: "new"; payment: typeof payments.$inferSelect };
+  let attempt: Attempt;
+  try {
+    attempt = await db.transaction(async (tx): Promise<Attempt> => {
+      const [locked] = await tx.select().from(bookings).where(eq(bookings.id, booking.id)).for("update");
+      if (locked.status !== "PENDING") {
+        throw new AppError("CONFLICT", `This booking is ${locked.status.toLowerCase()} and cannot be paid.`);
+      }
+      if (locked.holdExpiresAt <= now) {
+        await releaseBooking(tx, locked.id, "EXPIRED", now);
+        return { kind: "expired" };
+      }
+      const existing = await tx
+        .select()
+        .from(payments)
+        .where(and(eq(payments.bookingId, locked.id), eq(payments.status, "PENDING")))
+        .orderBy(desc(payments.createdAt));
+      for (const p of existing) {
+        if (!p.providerSessionId) {
+          // Another request is creating this session right now; abandon it if it never finished.
+          if (now.getTime() - p.createdAt.getTime() < 60_000) return { kind: "busy" };
+          await tx
+            .update(payments)
+            .set({ status: "FAILED", failureReason: "abandoned" })
+            .where(eq(payments.id, p.id));
+          continue;
+        }
+        const s = await gateway.retrieveCheckoutSession(p.providerSessionId);
+        if (s.status === "open" && s.url) return { kind: "reuse", url: s.url, paymentId: p.id };
+        if (s.status === "expired") {
+          await tx
+            .update(payments)
+            .set({ status: "CANCELLED", failureReason: "checkout_expired" })
+            .where(eq(payments.id, p.id));
+        }
+      }
+      const [{ n }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(payments)
+        .where(eq(payments.bookingId, locked.id));
+      const [payment] = await tx
+        .insert(payments)
+        .values({
+          bookingId: locked.id,
+          amountMinor: locked.totalMinor,
+          currency: locked.currency,
+          idempotencyKey: `checkout:${locked.id}:${n + 1}`,
+          status: "PENDING",
+        })
+        .returning();
+      return { kind: "new", payment };
+    });
+  } catch (err) {
+    if (pgCode(err) === PG_UNIQUE_VIOLATION) attempt = { kind: "busy" };
+    else throw err;
   }
-  if (booking.holdExpiresAt <= now) {
-    await db.transaction((tx) => releaseBooking(tx, booking.id, "EXPIRED", now));
+  if (attempt.kind === "expired") {
     throw new AppError("HOLD_EXPIRED", "Your seat hold has expired. Please select seats again.");
   }
-
-  // Reuse an open session if there is one.
-  const existing = await db
-    .select()
-    .from(payments)
-    .where(and(eq(payments.bookingId, booking.id), eq(payments.status, "PENDING")))
-    .orderBy(desc(payments.createdAt));
-  for (const p of existing) {
-    if (!p.providerSessionId || !p.checkoutUrl) continue;
-    const s = await gateway.retrieveCheckoutSession(p.providerSessionId);
-    if (s.status === "open" && s.url) return { url: s.url, paymentId: p.id, reused: true };
-    if (s.status === "expired") await markSessionExpired(db, p.providerSessionId);
-  }
-
-  const [{ n }] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(payments)
-    .where(eq(payments.bookingId, booking.id));
-  const idempotencyKey = `checkout:${booking.id}:${n + 1}`;
-
-  let payment: typeof payments.$inferSelect;
-  try {
-    [payment] = await db
-      .insert(payments)
-      .values({
-        bookingId: booking.id,
-        amountMinor: booking.totalMinor,
-        currency: booking.currency,
-        idempotencyKey,
-        status: "PENDING",
-      })
-      .returning();
-  } catch (err) {
-    if (pgCode(err) !== PG_UNIQUE_VIOLATION) throw err;
-    // A concurrent request created this attempt; hand back its session once it exists.
-    const [other] = await db.select().from(payments).where(eq(payments.idempotencyKey, idempotencyKey));
-    if (other?.checkoutUrl) return { url: other.checkoutUrl, paymentId: other.id, reused: true };
+  if (attempt.kind === "busy") {
     throw new AppError("CONFLICT", "Checkout is already being prepared. Please try again in a moment.");
   }
+  if (attempt.kind === "reuse") return { url: attempt.url, paymentId: attempt.paymentId, reused: true };
+  const { payment } = attempt;
+  const idempotencyKey = payment.idempotencyKey;
 
   const expiresAt = new Date(now.getTime() + minutes(CHECKOUT_SESSION_MINUTES) + 30_000);
   let session: CheckoutSessionInfo;

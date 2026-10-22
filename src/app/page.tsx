@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { MovieCard, MovieGridSkeleton } from "@/components/movie-card";
 import { MovieFilters } from "@/components/movie-filters";
@@ -58,6 +59,7 @@ export default function HomePage(props: PageProps<"/">) {
 }
 
 async function Catalog({ searchParams }: { searchParams: PageProps<"/">["searchParams"] }) {
+  await connection();
   const sp = await searchParams;
   const q = firstParam(sp.q)?.trim().slice(0, 100) || undefined;
   const genre = firstParam(sp.genre) || undefined;

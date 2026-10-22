@@ -325,6 +325,12 @@ export async function confirmPaidSession(db: Database, input: ConfirmInput): Pro
       return needRefund("amount_mismatch");
     }
     if (booking.status === "CONFIRMED") return needRefund("duplicate_payment");
+    const [show] = await tx
+      .select({ status: showtimes.status })
+      .from(showtimes)
+      .where(eq(showtimes.id, booking.showtimeId))
+      .for("share");
+    if (show?.status !== "SCHEDULED") return needRefund("showtime_cancelled");
     if (booking.status === "CANCELLED" || booking.status === "REFUNDED") return needRefund(`booking_${booking.status.toLowerCase()}`);
 
     // PENDING, or EXPIRED but the seats may still be free: try to (re)claim every seat.

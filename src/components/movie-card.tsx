@@ -38,9 +38,7 @@ export function MovieCard({ movie, query }: { movie: MovieCardData; query?: stri
         {movie.genres.length ? (
           <p className="truncate text-xs text-subtle">{movie.genres.map((g) => g.name).join(", ")}</p>
         ) : null}
-        <p className={`text-xs font-medium ${movie.nextShowAt ? "text-success" : "text-subtle"}`}>
-          {movie.nextShowAt ? "Tickets available" : "No upcoming shows"}
-        </p>
+        {movie.nextShowAt ? <p className="text-xs font-medium text-success">Tickets available</p> : null}
       </div>
     </Link>
   );
